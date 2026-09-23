@@ -1,0 +1,15 @@
+{
+  "name": "counter-service",
+  "version": "1.0.0",
+  "description": "Background service on the counter PC: receives orders from the relay server, persists them to SQLite, and prints them on a thermal printer.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "node-thermal-printer": "^4.4.4",
+    "socket.io-client": "^4.7.5"
+  }
+}

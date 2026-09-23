@@ -1,0 +1,13 @@
+{
+  "name": "relay-server",
+  "version": "1.0.0",
+  "description": "Relay between the order-entry PWA and the counter service. No database — in-memory per-counter queues.",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  }
+}
