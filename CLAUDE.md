@@ -10,7 +10,7 @@ tool (no lerna/nx/workspaces) — each folder is its own `npm install`.
 
 - **mobile-pwa/** — order-entry PWA (phones, installed to home screen). Plain HTML/CSS/JS, no framework, no build step.
 - **relay-server/** — Socket.io bridge between the PWA and the counter service. No database, in-memory only.
-- **counter-service/** — runs on the counter PC. Persists orders to SQLite (better-sqlite3) before acking anything, then drives a thermal printer (node-thermal-printer) or, in dev mode, a browser preview.
+- **counter-service/** — runs on the counter PC. Persists orders to SQLite (better-sqlite3) before acking anything, then prints a KOT ticket on a Windows thermal printer (HTML → Edge headless PDF → SumatraPDF) or, in dev mode, shows it in a browser preview.
 
 ## Commands
 
@@ -107,6 +107,27 @@ Full Socket.io protocol (`order:submit`, `order:delivered`,
 documented in `relay-server/README.md` — spans all three components, so
 read that before changing any event name or payload shape.
 
+### The printed ticket (KOT)
+
+The ticket is the user's POS KOT template, in `counter-service/src/kotTemplate.js`,
+copied verbatim from `KOT_TEMPLATE_SPEC.md` (80 mm roll, hand-tuned against a
+real printer). **Never restyle it** — no font/size/padding/column changes; the
+spec says its numbers are load-bearing (e.g. the 55 mm bottom padding is the
+blank tail before the cut). The only intentional deviations are two header
+lines: "Delivery" instead of "Dine In", and "Order No: N" instead of "Table No"
+(N is the order number the staff type on the phone, stored as `order_number`;
+it is unrelated to `orderId`, the internal UUID). Every ticket prints ONE copy (the user wants
+one, not the spec's two; `PRINT_COPIES` can raise it, sent as sequential
+jobs). `KOT - N` comes from a monotonically increasing SQLite counter
+(`meta` table) that is never reset and survives deleting printed orders.
+
+Printing is HTML → Edge headless → PDF sized to the ticket → SumatraPDF to
+the Windows printer (`PRINTER_NAME`); it is NOT ESC/POS and
+`node-thermal-printer` was removed. Electron (the spec's original route) was
+rejected because the service runs at boot with nobody signed in. Only the PDF
+rendering has been checked; the physical print on the real printer has not.
+The dev-mode preview renders this same HTML.
+
 ### Dev mode vs production — no UI in production, by design
 
 `counter-service`'s `DEV_MODE` swaps the real printer
@@ -153,10 +174,8 @@ transient network issues than forcing websocket-only.
   item search always searches `items` regardless of selection, and
   adding/removing/renaming either is a `menu.json`-only change, never a
   code change. The order payload carries `restaurant` (the
-  selected name); `counter-service` stores it (`db.js`) and prints it
-  as the ticket's main header line, ahead of the generic configured
-  `RESTAURANT_NAME` — with two brands sharing one printer, which brand
-  an order is for matters more than the deployment's generic name.
+  selected name); `counter-service` stores it (`db.js`) but the ticket
+  deliberately does NOT print the restaurant name (the user said so).
   Every menu item is half/full uniformly now (no more per-item `sizes`
   list) — don't reintroduce per-item size restrictions without being
   asked.
@@ -165,9 +184,14 @@ transient network issues than forcing websocket-only.
   reach already-installed devices on next load while online — see
   mobile-pwa/README.md. Only actual code files (`app.js`, `index.html`,
   etc.) need a `CACHE_NAME` bump.
-- **Single item per order, no cart.** The form is restaurant → item →
-  half/full → qty → notes → send, deliberately simplified from an
-  earlier multi-item-cart design. Don't reintroduce a cart without being asked.
+- **An order has one or more items, each with its own note.** The form is
+  the order-level card (restaurant + Order No, both required, set once per order
+  — not per item), then item → half/full → qty → note → **Add item**, repeated,
+  then **Send order** (a complete item still in the form is included on send).
+  Items are `{ name, size, qty, note? }`; there is NO order-level notes field
+  (the KOT's "Special Note" column is per item). History: it was multi-item,
+  briefly single-item, and the user asked for multi-item again — keep it
+  multi-item.
 - **The item field never blocks on a menu match.** Whatever is typed is
   used as the item name whether or not it's in `menu.json`; the
   dropdown is a type-ahead convenience only. Half/Full is always
@@ -197,7 +221,11 @@ counter PC, so startup must not depend on a user session: `setup-counter-pc.bat`
 either restarting doesn't affect the other. Tailscale and its persisted
 Funnel config start on their own. The user requires that nothing on the
 counter PC is ever started by hand — any new long-running process must be
-added to that script. Don't reintroduce onlogon/auto-login/netplwiz.
+added to that script. `start-services.bat` (desktop icon "Start CounterCall",
+created by the setup script) is the manual backup: it self-elevates and runs
+the two scheduled tasks via `schtasks /run`, relying on Task Scheduler's
+default "do not start a new instance" so a second click can't create a
+second counter service (never allowed, see above). Don't reintroduce onlogon/auto-login/netplwiz.
 
 ## Keeping this file current
 

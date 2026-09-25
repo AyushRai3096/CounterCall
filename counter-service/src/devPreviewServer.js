@@ -5,26 +5,26 @@ const config = require('./config');
 const logger = require('./logger');
 
 /**
- * Stand-in for the real printer during development. Instead of sending
- * ESC/POS commands, each print attempt is queued here and shown as a
+ * Stand-in for the real printer during development. Instead of really
+ * printing, each print attempt is queued here and shown as a
  * ticket preview on a tiny local web page with Accept/Reject buttons —
  * Accept resolves the pending print (simulating a successful print),
  * Reject rejects it (simulating a printer failure), so the retry/error
  * flagging path can be exercised without real hardware.
  */
 
-// Queue of { orderId, lines, resolve, reject }. Only the front item is
+// Queue of { orderId, html, resolve, reject }. Only the front item is
 // shown; a single operator clicks through them one at a time.
 const queue = [];
 
-function requestPreview(order, lines) {
+function requestPreview(order, html) {
   return new Promise((resolve, reject) => {
-    queue.push({ orderId: order.orderId, lines, resolve, reject });
+    queue.push({ orderId: order.orderId, html, resolve, reject });
   });
 }
 
 function currentPreview() {
-  return queue.length > 0 ? { orderId: queue[0].orderId, lines: queue[0].lines } : null;
+  return queue.length > 0 ? { orderId: queue[0].orderId, html: queue[0].html } : null;
 }
 
 function resolveCurrent(outcome) {
@@ -47,8 +47,7 @@ function renderPage() {
 <style>
   body { font-family: -apple-system, sans-serif; background: #f2ede8; margin: 0; padding: 24px; color: #241814; }
   h1 { font-size: 1.1rem; margin: 0 0 16px; }
-  .ticket { background: white; border: 1px solid #ddd; border-radius: 10px; padding: 16px; max-width: 320px; white-space: pre-wrap; font-family: "Courier New", monospace; font-size: 0.95rem; margin-bottom: 16px; min-height: 60px; }
-  .empty { color: #8a7a72; }
+  .ticket { background: white; border: 1px solid #ddd; border-radius: 10px; width: 320px; height: 420px; margin-bottom: 16px; }
   .queue-note { font-size: 0.85rem; color: #8a7a72; margin-bottom: 16px; }
   .buttons { display: flex; gap: 12px; max-width: 320px; }
   button { flex: 1; padding: 12px; font-size: 1rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; }
@@ -60,7 +59,7 @@ function renderPage() {
 <body>
 <h1>Print Preview (dev mode)</h1>
 <div class="queue-note" id="queue-note"></div>
-<div class="ticket" id="ticket">Loading…</div>
+<iframe class="ticket" id="ticket" srcdoc="Loading…"></iframe>
 <div class="buttons">
   <button id="accept">Accept (simulate printed)</button>
   <button id="reject">Reject (simulate failure)</button>
@@ -74,11 +73,17 @@ async function poll() {
   const accept = document.getElementById('accept');
   const reject = document.getElementById('reject');
   if (data.pending) {
-    ticket.textContent = data.pending.lines.join('\\n');
+    if (ticket.dataset.orderId !== data.pending.orderId) {
+      ticket.srcdoc = data.pending.html;
+      ticket.dataset.orderId = data.pending.orderId;
+    }
     accept.disabled = false;
     reject.disabled = false;
   } else {
-    ticket.innerHTML = '<span class="empty">No print waiting.</span>';
+    if (ticket.dataset.orderId !== '') {
+      ticket.srcdoc = '<p style="font-family:sans-serif;color:#8a7a72">No print waiting.</p>';
+      ticket.dataset.orderId = '';
+    }
     accept.disabled = true;
     reject.disabled = true;
   }

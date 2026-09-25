@@ -2,19 +2,45 @@
 
 Background process that runs on the counter PC. No UI — it's a persistent
 WebSocket client to the relay server plus a local SQLite queue and a
-thermal-printer driver.
+thermal-printer driver (tickets are HTML printed through the normal Windows printer driver).
 
 ## Setup
 
 ```
 cd counter-service
 npm install
-copy .env.example .env    # then edit RELAY_URL / PRINTER_INTERFACE
+copy .env.example .env    # then set PRINTER_NAME
 npm start
 ```
 
 Single-counter design — there's exactly one relay and one counter service,
 so no counter/register id is needed anywhere in the protocol.
+
+## The printed ticket (KOT)
+
+The layout is the KOT template from the POS (`src/kotTemplate.js`), used
+as-is: 80 mm roll, 72 mm body, header of date/time, `KOT - N`, **Delivery**,
+**Order No: N**, then an Item / Special Note / Qty table. Item text is
+`Name (Full|Half)`; each item's own note goes in the note column (`--` if none);
+no prices, no restaurant name. `Order No` is the number the staff typed on
+the phone (it replaces the template's "Table No"). Only the "Dine In" and
+"Table No" lines differ from the template (by request). Do not restyle it.
+
+- `KOT - N` is a counter kept in SQLite (`meta` table) that only ever goes
+  up, so it survives restarts and deleting printed orders.
+- Every ticket prints **1 copy** by default (`PRINT_COPIES` can raise it; extra
+  copies are sent as separate sequential jobs).
+- Printing: Edge headless lays the HTML out, measures it, and saves a PDF
+  whose page is exactly as tall as the ticket (so the template's 55 mm tail
+  is the only blank paper); SumatraPDF then sends it to `PRINTER_NAME` with
+  `noscale`. Edge ships with Windows; `setup-counter-pc.bat` installs
+  SumatraPDF. The dev preview shows this same HTML.
+- `npm run test-print` prints one sample ticket (KOT 999) to check the printer
+  setup without the relay or a phone.
+- Not yet verified on the real printer (only the PDF rendering was checked).
+  If the physical output is off, first check the printer's paper form
+  (driver form "Printer 80(72.1) x 297 mm") and that Sumatra printed at
+  100%, before touching the template.
 
 ## Dev mode (no printer needed)
 
@@ -82,7 +108,8 @@ Remove with: `schtasks /delete /tn "CounterCallCounterService" /f`.
 
 - `index.js` - entry point; just requires `src/index.js`
 - `src/db.js` - SQLite schema + queries (better-sqlite3)
-- `src/printer.js` - ESC/POS ticket formatting + printing (node-thermal-printer)
+- `src/kotTemplate.js` - the KOT ticket HTML/CSS, copied verbatim from KOT_TEMPLATE_SPEC.md
+- `src/printer.js` - order to KOT mapping, renders via Edge headless to PDF, prints via SumatraPDF
 - `src/socketClient.js` - relay connection with fixed backoff reconnection
 - `src/index.js` - wiring, startup resume logic, retry/error policy
 

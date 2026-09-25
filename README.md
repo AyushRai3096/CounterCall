@@ -72,6 +72,15 @@ SYSTEM, so they start before anyone signs in with no auto-login or stored
 password, and each restarts itself if it crashes. Tailscale runs as a
 Windows service and its Funnel setting persists.
 
+**Backup:** the setup also puts a **Start CounterCall** icon on the desktop
+(`start-services.bat`). If the services ever aren't running after a boot,
+click it: it asks for administrator permission, starts both, and shows
+whether the relay is answering. It's safe to click when they're already
+running (Task Scheduler won't start a second copy). The `.ts.net` address
+is printed at the end of the setup window and any time by
+`tailscale funnel status`; it doesn't change on reboot (only if the PC or
+tailnet is renamed).
+
 For manual/dev runs instead of the scheduled tasks, each folder has its
 own `npm start` — see that component's README.
 
@@ -79,13 +88,13 @@ own `npm start` — see that component's README.
 
 - [mobile-pwa/](mobile-pwa/README.md) — order entry PWA (phones, installed to home screen)
 - [relay-server/](relay-server/README.md) — bridges the PWA and the counter service, no database
-- [counter-service/](counter-service/README.md) — durable SQLite queue + thermal printer driver, or a browser preview in dev mode
+- [counter-service/](counter-service/README.md) — durable SQLite queue + KOT ticket printing (Windows printer), or a browser preview in dev mode
 
 ## Production checklist
 
 - `counter-service/.env`: `DEV_MODE` unset or `false` (defaults to real
   printer — see that README for why this default matters), correct
-  `PRINTER_INTERFACE`.
+  `PRINTER_NAME` (SumatraPDF installed; Edge ships with Windows).
 - `mobile-pwa/public/menu.json`: real menu items (item field also
   accepts free-typed names not in the list — it never blocks).
 - `setup-counter-pc.bat` run once as Administrator, then a reboot test (without signing in): the counter-service log shows a fresh "Counter service starting" line and a phone order prints.

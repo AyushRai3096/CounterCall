@@ -4,7 +4,7 @@
 // cache. This app is under active development — a stale cache-first
 // service worker would otherwise silently keep serving old JS/menu data
 // to an already-installed PWA with no visible error.
-const CACHE_NAME = 'countercall-v6';
+const CACHE_NAME = 'countercall-v8';
 const APP_SHELL = [
   './',
   'index.html',

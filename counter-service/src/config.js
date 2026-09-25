@@ -33,13 +33,17 @@ loadEnvFile();
 
 module.exports = {
   relayUrl: process.env.RELAY_URL || 'http://localhost:4000',
-  printerType: process.env.PRINTER_TYPE || 'epson',
-  printerInterface: process.env.PRINTER_INTERFACE || 'tcp://192.168.1.50:9100',
-  restaurantName: process.env.RESTAURANT_NAME || 'CounterCall',
-  dbPath: path.join(__dirname, '..', 'data', 'counter.db'),
-  logPath: path.join(__dirname, '..', 'logs', 'counter-service.log'),
+  // Name of the installed Windows printer, exactly as shown in Settings > Printers.
+  printerName: process.env.PRINTER_NAME || '',
+  // Tickets are HTML rendered to PDF by Edge (headless), then printed by SumatraPDF.
+  // Leave blank to auto-detect the usual install locations.
+  edgePath: process.env.EDGE_PATH || '',
+  sumatraPath: process.env.SUMATRA_PATH || '',
+  printCopies: Number(process.env.PRINT_COPIES) || 1,
+  dbPath: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'counter.db'),
+  logPath: process.env.LOG_PATH || path.join(__dirname, '..', 'logs', 'counter-service.log'),
   reconnectDelaysMs: [5000, 10000, 30000], // 5s, 10s, then 30s cap
-  // Dev mode replaces the real ESC/POS printer with a browser preview
+  // Dev mode replaces the real printer with a browser preview
   // (Accept/Reject buttons) so both the success and failure paths can be
   // exercised without physical hardware. Defaults to OFF (real printer)
   // unless explicitly enabled — the failure mode of defaulting to "on"

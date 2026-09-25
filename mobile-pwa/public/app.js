@@ -5,13 +5,16 @@ const UNCONFIRMED_TIMEOUT_MS = 15000;
 const els = {
   connectionDot: document.getElementById('connection-dot'),
   restaurantSelect: document.getElementById('restaurant-select'),
+  orderNumber: document.getElementById('order-number'),
   itemSearch: document.getElementById('item-search'),
   itemResults: document.getElementById('item-results'),
   sizeOptions: document.getElementById('size-options'),
   qtyValue: document.getElementById('qty-value'),
   qtyMinus: document.getElementById('qty-minus'),
   qtyPlus: document.getElementById('qty-plus'),
-  orderNotes: document.getElementById('order-notes'),
+  itemNote: document.getElementById('item-note'),
+  addItemBtn: document.getElementById('add-item-btn'),
+  cartList: document.getElementById('cart-list'),
   submitOrderBtn: document.getElementById('submit-order-btn'),
   ordersList: document.getElementById('orders-list'),
 };
@@ -25,7 +28,9 @@ let selectedRestaurant = null;
 let selectedMenuItem = null;
 let selectedSize = null;
 let qty = 1;
-// orderId -> { orderId, items, notes, status, message, sentAt, timeoutId }
+// Items added to the order being built: [{ name, size, qty, note }]
+let cart = [];
+// orderId -> { orderId, restaurant, orderNumber, items, status, message, sentAt, timeoutId }
 const orders = new Map();
 
 // crypto.randomUUID() only exists in secure contexts (https:// or
@@ -102,6 +107,7 @@ els.restaurantSelect.addEventListener('change', () => {
   selectedRestaurant = els.restaurantSelect.value || null;
   updateSubmitButtonState();
 });
+els.orderNumber.addEventListener('input', updateSubmitButtonState);
 
 // The item field never blocks on a menu match — whatever is typed is used
 // as the item name. The dropdown is just a type-ahead convenience on top.
@@ -159,9 +165,17 @@ function renderSizeOptions() {
   }
 }
 
+// The entry form currently holds a complete item (name typed + size chosen).
+function entryReady() {
+  return !!(els.itemSearch.value.trim() && selectedSize);
+}
+
 function updateSubmitButtonState() {
-  const restaurantOk = restaurantNames.length === 0 || !!selectedRestaurant;
-  els.submitOrderBtn.disabled = !(restaurantOk && els.itemSearch.value.trim() && selectedSize);
+  // Restaurant and order number belong to the whole order, not to each item.
+  const restaurantOk = restaurantNames.length === 0 || (!!selectedRestaurant && !!els.orderNumber.value.trim());
+  els.addItemBtn.disabled = !entryReady();
+  // A complete entry that hasn't been added yet is sent along with the cart.
+  els.submitOrderBtn.disabled = !(restaurantOk && (cart.length > 0 || entryReady()));
 }
 
 els.itemSearch.addEventListener('input', () => {
@@ -192,24 +206,96 @@ els.qtyPlus.addEventListener('click', () => {
   renderQty();
 });
 
+// Turns whatever is in the entry form into an item and clears the form for the next one.
+function takeEntry() {
+  const item = {
+    name: els.itemSearch.value.trim(),
+    size: selectedSize,
+    qty,
+    note: els.itemNote.value.trim() || undefined,
+  };
+  selectedMenuItem = null;
+  selectedSize = null;
+  qty = 1;
+  els.itemSearch.value = '';
+  els.itemNote.value = '';
+  els.itemResults.hidden = true;
+  renderSizeOptions();
+  renderQty();
+  return item;
+}
+
+els.addItemBtn.addEventListener('click', () => {
+  if (!entryReady()) return;
+  cart.push(takeEntry());
+  renderCart();
+  updateSubmitButtonState();
+});
+
+function renderCart() {
+  els.cartList.innerHTML = '';
+
+  if (cart.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty-hint';
+    li.textContent = 'No items added yet.';
+    els.cartList.appendChild(li);
+    return;
+  }
+
+  cart.forEach((item, index) => {
+    const li = document.createElement('li');
+    li.className = 'cart-item';
+
+    const info = document.createElement('div');
+    info.className = 'order-item-info';
+    const name = document.createElement('span');
+    name.className = 'order-item-name';
+    name.textContent = `${item.qty}x ${item.name} (${item.size})`;
+    info.appendChild(name);
+    if (item.note) {
+      const note = document.createElement('span');
+      note.className = 'order-item-meta';
+      note.textContent = item.note;
+      info.appendChild(note);
+    }
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.setAttribute('aria-label', `Remove ${item.name}`);
+    removeBtn.addEventListener('click', () => {
+      cart.splice(index, 1);
+      renderCart();
+      updateSubmitButtonState();
+    });
+
+    li.append(info, removeBtn);
+    els.cartList.appendChild(li);
+  });
+}
+
 // ---------- Order submission + status tracking ----------
 
 els.submitOrderBtn.addEventListener('click', () => {
-  const itemName = els.itemSearch.value.trim();
-  if (!itemName || !selectedSize) return;
+  // Include a complete item still sitting in the form, so forgetting to tap
+  // "Add item" for the last one doesn't drop it.
+  const items = [...cart];
+  if (entryReady()) items.push(takeEntry());
+  if (items.length === 0) return;
+  cart = [];
 
   const orderId = generateId();
-  const items = [{ name: itemName, size: selectedSize, qty }];
-  const notes = els.orderNotes.value.trim() || undefined;
   const order = {
     orderId,
     restaurant: selectedRestaurant || undefined,
+    orderNumber: els.orderNumber.value.trim() || undefined,
     items,
-    notes,
     createdAt: new Date().toISOString(),
   };
 
-  const record = { orderId, restaurant: selectedRestaurant, items, notes, status: 'sent', sentAt: Date.now() };
+  const record = { orderId, restaurant: selectedRestaurant, orderNumber: order.orderNumber, items, status: 'sent', sentAt: Date.now() };
   record.timeoutId = setTimeout(() => flagUnconfirmed(orderId), UNCONFIRMED_TIMEOUT_MS);
   orders.set(orderId, record);
 
@@ -227,14 +313,9 @@ els.submitOrderBtn.addEventListener('click', () => {
     console.error('No relay connection available — order kept locally only.');
   }
 
-  // Reset the form for the next order.
-  selectedMenuItem = null;
-  selectedSize = null;
-  qty = 1;
-  els.itemSearch.value = '';
-  els.orderNotes.value = '';
-  renderSizeOptions();
-  renderQty();
+  // A new order needs its own number; the restaurant stays selected.
+  els.orderNumber.value = '';
+  renderCart();
   updateSubmitButtonState();
   renderOrders();
 });
@@ -276,11 +357,11 @@ function renderOrders() {
     info.className = 'order-item-info';
     const name = document.createElement('span');
     name.className = 'order-item-name';
-    const restaurantPrefix = record.restaurant ? `[${record.restaurant}] ` : '';
+    const restaurantPrefix = (record.restaurant ? `[${record.restaurant}] ` : '') + (record.orderNumber ? `#${record.orderNumber} ` : '');
     name.textContent = restaurantPrefix + record.items.map((i) => `${i.qty}x ${i.name} (${i.size})`).join(', ');
     const meta = document.createElement('span');
     meta.className = 'order-item-meta';
-    meta.textContent = record.notes || '—';
+    meta.textContent = record.items.filter((i) => i.note).map((i) => `${i.name}: ${i.note}`).join(' · ') || '—';
     info.append(name, meta);
 
     if (record.unconfirmed) {
@@ -322,6 +403,7 @@ function statusLabel(status) {
 loadMenu();
 renderQty();
 renderSizeOptions();
+renderCart();
 renderOrders();
 
 // ---------- Socket connection ----------

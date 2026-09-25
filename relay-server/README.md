@@ -35,7 +35,7 @@ independently. See the root README.
 ## Protocol
 
 **PWA → relay**
-- `order:submit` — `{ orderId, items, restaurant?, notes? }`
+- `order:submit` — `{ orderId, items: [{ name, size, qty, note? }], restaurant?, orderNumber? }`
 
 **Relay → PWA** (routed back to the socket that submitted the order)
 - `order:delivered` — `{ orderId }` — the counter has durably received it

@@ -1,8 +1,12 @@
 # Mobile PWA
 
-Order-entry app for remote staff. Deliberately simple — one screen, one
-item per order: restaurant, item (searchable dropdown), half/full,
-quantity, notes, send. Plain HTML/CSS/JS — no build step, no framework.
+Order-entry app for remote staff. Deliberately simple — one screen: pick
+the restaurant and type the **Order No** (both belong to the whole order,
+in their own "Order" card), then for each item choose the item (searchable
+dropdown), half/full, quantity and an optional note and tap **Add item**;
+**Send order** sends every added item as one order. Restaurant and Order No
+are required to send (the restaurant stays selected between orders; the
+Order No is cleared for the next one). Plain HTML/CSS/JS — no build step, no framework.
 Talks to the relay server over Socket.io, whose browser client is
 vendored locally at
 [public/vendor/socket.io.min.js](public/vendor/socket.io.min.js) rather

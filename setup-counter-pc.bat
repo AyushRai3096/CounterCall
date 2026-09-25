@@ -1,6 +1,6 @@
 @echo off
 REM ONE-TIME setup for the counter PC. Right-click > Run as administrator.
-REM Installs what's missing (Node.js, Tailscale), installs the packages, writes the
+REM Installs what's missing (Node.js, SumatraPDF, Tailscale), installs the packages, writes the
 REM printer config, makes the relay + counter service start at every Windows boot
 REM (before anyone signs in, restart on crash), and publishes the relay at a
 REM permanent https address that the phones use. Safe to run again.
@@ -30,18 +30,17 @@ echo === 2/6 Installing packages ===
 pushd relay-server && call npm install && popd
 pushd counter-service && call npm install && popd
 
-echo === 3/6 Printer settings ===
+echo === 3/6 Printer ===
+if not exist "%ProgramFiles%\SumatraPDF\SumatraPDF.exe" if not exist "%ProgramFiles(x86)%\SumatraPDF\SumatraPDF.exe" (
+  winget install -e --id SumatraPDF.SumatraPDF --scope machine --accept-source-agreements --accept-package-agreements
+)
 if not exist counter-service\.env (
-  set "PTYPE=epson"
-  set /p PTYPE=Printer type [epson / star, press Enter for epson]:
-  set /p PIFACE=Printer address, e.g. tcp://192.168.1.50:9100 :
-  set /p RNAME=Name to print on tickets if no restaurant is chosen [CounterCall]:
-  if "!RNAME!"=="" set "RNAME=CounterCall"
+  echo Installed printers on this PC:
+  powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"
+  set /p PNAME=Type the kitchen printer name exactly as listed above: 
   > counter-service\.env (
     echo RELAY_URL=http://localhost:4000
-    echo PRINTER_TYPE=!PTYPE!
-    echo PRINTER_INTERFACE=!PIFACE!
-    echo RESTAURANT_NAME=!RNAME!
+    echo PRINTER_NAME=!PNAME!
   )
 ) else (
   echo counter-service\.env already exists, keeping it.
@@ -52,6 +51,8 @@ schtasks /create /tn "CounterCallRelayServer" /tr "cmd /c \"%ROOT%relay-server\r
 schtasks /create /tn "CounterCallCounterService" /tr "cmd /c \"%ROOT%counter-service\run.bat\"" /sc onstart /ru SYSTEM /rl highest /f
 schtasks /run /tn "CounterCallRelayServer"
 schtasks /run /tn "CounterCallCounterService"
+REM Desktop icon for everyone that starts the services by hand, as a backup.
+powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%PUBLIC%\Desktop\Start CounterCall.lnk'); $s.TargetPath='%ROOT%start-services.bat'; $s.WorkingDirectory='%ROOT%'; $s.Save()"
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
 

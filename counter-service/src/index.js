@@ -18,7 +18,7 @@ async function attemptPrint(order) {
 
   try {
     if (config.devMode) {
-      await devPreviewServer.requestPreview(order, printer.buildPreviewLines(order));
+      await devPreviewServer.requestPreview(order, printer.buildPreviewHtml(order));
     } else {
       await printer.printOrder(order);
     }

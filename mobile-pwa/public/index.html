@@ -19,11 +19,20 @@
 
   <main>
     <section class="card">
+      <h2>Order</h2>
       <label class="field">
         <span>Restaurant</span>
         <select id="restaurant-select"></select>
       </label>
 
+      <label class="field">
+        <span>Order No</span>
+        <input id="order-number" type="text" placeholder="Order number" autocomplete="off" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Items</h2>
       <label class="field">
         <span>Item</span>
         <input id="item-search" type="text" placeholder="Type to search menu…" autocomplete="off" />
@@ -47,10 +56,18 @@
       </div>
 
       <label class="field">
-        <span>Additional notes</span>
-        <input id="order-notes" type="text" placeholder="Optional…" />
+        <span>Note for this item</span>
+        <input id="item-note" type="text" placeholder="Optional…" />
       </label>
 
+      <button type="button" id="add-item-btn" class="btn btn-secondary" disabled>Add item</button>
+    </section>
+
+    <section class="card">
+      <h2>This order</h2>
+      <ul id="cart-list" class="cart-list">
+        <li class="empty-hint">No items added yet.</li>
+      </ul>
       <button type="button" id="submit-order-btn" class="btn btn-primary" disabled>Send order</button>
     </section>
 
