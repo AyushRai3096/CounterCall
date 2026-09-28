@@ -1,8 +1,8 @@
 @echo off
 REM Runs the counter service and restarts it automatically if it ever
-REM exits (crash, power blip recovering mid-run, etc). Intended to be
-REM launched by a Windows Task Scheduler boot task — see
-REM README.md "Run automatically on Windows startup".
+REM exits (crash, power blip recovering mid-run, etc). Launched hidden via
+REM run-hidden.vbs, itself started by the Windows Startup-folder shortcut
+REM created by install.bat.
 cd /d "%~dp0"
 
 :loop

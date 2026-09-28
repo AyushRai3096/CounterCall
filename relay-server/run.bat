@@ -1,8 +1,7 @@
 @echo off
 REM Runs the relay server and restarts it automatically if it ever exits
-REM (crash, power blip, etc). Intended to be launched by a Windows Task
-REM Scheduler boot task — see README.md "Run automatically
-REM on Windows startup".
+REM (crash, power blip, etc). Launched hidden via run-hidden.vbs, itself
+REM started by the Windows Startup-folder shortcut created by install.bat.
 cd /d "%~dp0"
 
 :loop

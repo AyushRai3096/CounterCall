@@ -13,8 +13,8 @@ authentication yet, so anyone with the Funnel address can submit orders.
 
 ```
 cd relay-server
-npm install
-npm start          # listens on :4000 by default (PORT env var to change)
+npm install         # only if node_modules isn't already here — it's committed to this repo
+npm start           # listens on :4000 by default (PORT env var to change)
 ```
 
 ## Also serves the mobile PWA
@@ -27,9 +27,10 @@ Phones open the Funnel `https://…ts.net` address in Chrome and Install.
 
 ## Run automatically on Windows startup
 
-`setup-counter-pc.bat` (repo root, run once as Administrator) registers
-this folder's `run.bat` to start at Windows boot as SYSTEM and restart on
-crash. It is a separate task from the counter service, so each restarts
+`install.bat` (repo root, run once as Administrator) puts a shortcut in
+the Windows Startup folder that launches this folder's `run.bat` with no
+console window the moment someone signs in, restarting it if it crashes.
+It's launched separately from the counter service, so each restarts
 independently. See the root README.
 
 ## Protocol

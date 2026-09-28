@@ -211,21 +211,46 @@ transient network issues than forcing websocket-only.
   `CACHE_NAME` must be bumped on every app-shell file change or edits
   won't reach devices that already have the service worker installed.
 
-### Windows auto-start
+### Windows auto-start, and why `node_modules` is committed to git
 
-`relay-server/run.bat` and `counter-service/run.bat` are crash-restart
-loops. The user CANNOT enable Windows auto-login or disable sign-in on the
-counter PC, so startup must not depend on a user session: `setup-counter-pc.bat`
-(repo root, run once as Administrator) registers both as Task Scheduler
-`onstart` tasks running as SYSTEM (no password). Two independent tasks, so
-either restarting doesn't affect the other. Tailscale and its persisted
-Funnel config start on their own. The user requires that nothing on the
-counter PC is ever started by hand — any new long-running process must be
-added to that script. `start-services.bat` (desktop icon "Start CounterCall",
-created by the setup script) is the manual backup: it self-elevates and runs
-the two scheduled tasks via `schtasks /run`, relying on Task Scheduler's
-default "do not start a new instance" so a second click can't create a
-second counter service (never allowed, see above). Don't reintroduce onlogon/auto-login/netplwiz.
+**History**: this was originally Task Scheduler tasks running as SYSTEM at
+boot (`setup-counter-pc.bat`, since deleted), chosen because the user could
+not enable Windows auto-login. That approach was abandoned after repeated,
+hard-to-diagnose failures on the real counter PC: PowerShell's script
+execution policy blocked `npm install`, and — the actual blocker —
+`better-sqlite3`'s native build failed with a `node-gyp`/Python error
+because prebuild-install couldn't fetch a Windows binary over that
+network. The user does sign in to the counter PC day to day (running a
+till), so the "must survive nobody signing in" constraint was dropped.
+
+**Current design**: `install.bat` (repo root, run once as Administrator)
+creates a shortcut in the current user's Windows **Startup folder**
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) pointing at
+`run-all-hidden.vbs` (repo root). That launches `relay-server/run-hidden.vbs`
+and `counter-service/run-hidden.vbs`, each of which runs that folder's
+`run.bat` (the crash-restart loop, unchanged) with **no visible console
+window**. No Task Scheduler, no SYSTEM account, no admin rights needed for
+this step (only `install.bat`'s winget installs need elevation).
+`start-services.bat` (desktop icon "Start CounterCall") is the manual
+backup — it explicitly checks whether the relay (`/health`) and counter
+service (by command line, via `Get-CimInstance Win32_Process`) are already
+running before starting either, since nothing here has Task Scheduler's
+(unverified, and no longer relevant) "don't start a second instance"
+semantics — **never let two counter-service instances run at once**, see
+above. The user requires that nothing on the counter PC is ever started by
+hand day to day — any new long-running process must be added to
+`run-all-hidden.vbs`.
+
+**`node_modules` for `relay-server` and `counter-service` is deliberately
+committed to git**, not `.gitignore`d (see the `.gitignore` comments in
+both folders and in the repo root) — this is what actually removes the
+`npm install` failure: the counter PC never runs it, it just runs the
+already-resolved code, prebuilt native `better-sqlite3` binary included.
+`install.bat` checks these folders exist and refuses to continue with a
+clear message if a download somehow left them out, rather than silently
+trying to `npm install` and hitting the same failure again. Don't add
+`node_modules` back to `.gitignore`, and don't reintroduce
+onlogon/Task-Scheduler/SYSTEM/auto-login/netplwiz for these two services.
 
 ## Keeping this file current
 

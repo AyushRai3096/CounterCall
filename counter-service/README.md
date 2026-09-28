@@ -8,10 +8,15 @@ thermal-printer driver (tickets are HTML printed through the normal Windows prin
 
 ```
 cd counter-service
-npm install
+npm install                # only if node_modules isn't already here — see note below
 copy .env.example .env    # then set PRINTER_NAME
 npm start
 ```
+
+`node_modules` is committed to this repo and normally already present —
+don't run `npm install` on the counter PC (see the root README and
+`CLAUDE.md` for why). This is only for a dev machine where you've
+deliberately deleted it or changed a dependency.
 
 Single-counter design — there's exactly one relay and one counter service,
 so no counter/register id is needed anywhere in the protocol.
@@ -33,8 +38,8 @@ the phone (it replaces the template's "Table No"). Only the "Dine In" and
 - Printing: Edge headless lays the HTML out, measures it, and saves a PDF
   whose page is exactly as tall as the ticket (so the template's 55 mm tail
   is the only blank paper); SumatraPDF then sends it to `PRINTER_NAME` with
-  `noscale`. Edge ships with Windows; `setup-counter-pc.bat` installs
-  SumatraPDF. The dev preview shows this same HTML.
+  `noscale`. Edge ships with Windows; `install.bat` installs SumatraPDF.
+  The dev preview shows this same HTML.
 - `npm run test-print` prints one sample ticket (KOT 999) to check the printer
   setup without the relay or a phone.
 - Not yet verified on the real printer (only the PDF rendering was checked).
@@ -92,17 +97,19 @@ on a development machine that has no printer attached.
 
 ## Run automatically on Windows startup
 
-Run `setup-counter-pc.bat` (repo root) once as Administrator. It
-registers a Task Scheduler task that starts `run.bat` at Windows **boot**
-as SYSTEM, so no one has to sign in and no password is stored. `run.bat`
-restarts the service 5 seconds after any exit. Nothing is started by hand.
+Run `install.bat` (repo root) once as Administrator. It creates a
+shortcut in the signed-in user's Windows **Startup folder** to
+`run-all-hidden.vbs` (repo root), which launches this service (and the
+relay) with no console window via `run-hidden.vbs` → `run.bat`. `run.bat`
+restarts the service 5 seconds after any exit.
 
-SYSTEM can reach a network printer (`tcp://...`) and machine-wide
-installed printers; if a USB printer only works when signed in as a
-specific user, use a network/IP printer or re-register the task under
-that user.
+This runs as the normal signed-in user (not SYSTEM, not Task Scheduler —
+that was tried and hit repeated failures on the real counter PC), so it
+starts once someone signs in, and it sees the printer exactly as that
+user does in Windows.
 
-Remove with: `schtasks /delete /tn "CounterCallCounterService" /f`.
+To remove: delete the shortcut from
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`.
 
 ## Files
 

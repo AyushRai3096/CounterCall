@@ -1,5 +1,8 @@
-node_modules/
+# relay-server/node_modules and counter-service/node_modules are
+# deliberately COMMITTED (not ignored) - see counter-service/.gitignore and
+# CLAUDE.md for why (the counter PC must never run "npm install").
 data/
 logs/
 .env
 *.log
+install-log.txt
