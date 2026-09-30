@@ -35,17 +35,28 @@ the phone (it replaces the template's "Table No"). Only the "Dine In" and
   up, so it survives restarts and deleting printed orders.
 - Every ticket prints **1 copy** by default (`PRINT_COPIES` can raise it; extra
   copies are sent as separate sequential jobs).
-- Printing: Edge headless lays the HTML out, measures it, and saves a PDF
-  whose page is exactly as tall as the ticket (so the template's 55 mm tail
-  is the only blank paper); SumatraPDF then sends it to `PRINTER_NAME` with
-  `noscale`. Edge ships with Windows; `install.bat` installs SumatraPDF.
-  The dev preview shows this same HTML.
+- Printing: Edge headless saves a PDF at a **fixed/estimated page height**
+  (297 mm, matching the printer driver's own paper form — or taller for an
+  unusually large order, from plain arithmetic on the order, not from
+  measuring anything rendered); SumatraPDF then sends it to `PRINTER_NAME`
+  with `noscale`. Edge ships with Windows; `install.bat` installs SumatraPDF.
+  The dev preview shows this same ticket HTML directly (not the PDF).
+  - An earlier version rendered once to *measure* the ticket's exact height
+    via Edge before rendering the real PDF. It failed on the real counter
+    PC ("Could not measure the ticket height") because it depended on how
+    Edge's headless DOM dump timed against a `<script>` tag — not reliable
+    across machines/versions. Don't bring that back; a bit of extra blank
+    paper from an over-generous fixed height is always safe, cutting
+    content off from an under-estimate is not.
+  - `PRINTER_NAME` is checked against the actual list of installed Windows
+    printers (not just "is it set") both at startup and before every
+    print — a typo now fails with a clear message instead of either a
+    cryptic SumatraPDF error or, worse, no error at all with nothing printed.
 - `npm run test-print` prints one sample ticket (KOT 999) to check the printer
   setup without the relay or a phone.
-- Not yet verified on the real printer (only the PDF rendering was checked).
-  If the physical output is off, first check the printer's paper form
-  (driver form "Printer 80(72.1) x 297 mm") and that Sumatra printed at
-  100%, before touching the template.
+- The fixed/estimated-height rendering has been tested (1 item, a very long
+  note, and 25 items — all rendered correctly, single Edge call each). The
+  physical print on the real printer/driver has not been directly observed.
 
 ## Dev mode (no printer needed)
 

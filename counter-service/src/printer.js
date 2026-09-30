@@ -59,40 +59,78 @@ function buildPreviewHtml(order) {
   return ticketHtml(order);
 }
 
+// Checks PRINTER_NAME is spelled exactly as Windows has it — a typo here
+// otherwise only surfaces as a cryptic SumatraPDF failure at print time.
+function printerExists(name) {
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-Command', `(Get-Printer -Name ${JSON.stringify(name)} -ErrorAction SilentlyContinue) -ne $null`],
+      { timeout: TOOL_TIMEOUT_MS, windowsHide: true },
+      (err, stdout) => resolve(!err && stdout.trim().toLowerCase() === 'true')
+    );
+  });
+}
+
 async function isPrinterReady() {
   const problems = [];
-  if (!config.printerName) problems.push('PRINTER_NAME is not set');
+  if (!config.printerName) {
+    problems.push('PRINTER_NAME is not set');
+  } else if (!(await printerExists(config.printerName))) {
+    problems.push(
+      `No Windows printer named "${config.printerName}" — check Settings > Printers & ` +
+      'scanners for the exact name (PRINTER_NAME in .env must match exactly)'
+    );
+  }
   if (!findExe(config.edgePath, EDGE_CANDIDATES)) problems.push('Microsoft Edge not found (set EDGE_PATH)');
   if (!findExe(config.sumatraPath, SUMATRA_CANDIDATES)) problems.push('SumatraPDF not found (set SUMATRA_PATH)');
   if (problems.length) logger.warn(`Printing is not ready: ${problems.join('; ')}`);
   return problems.length === 0;
 }
 
-// Renders the ticket to a PDF whose page is exactly as tall as the ticket, so the
-// roll feeds the ticket plus the template's own 55 mm tail and nothing more.
-async function renderPdf(html, dir) {
+// Fixed page height instead of measuring the ticket's actual rendered height
+// first. An earlier version rendered once to measure the height via Edge's
+// headless DOM dump, then rendered again at the exact size — it depended on
+// Edge running a <script> and dumping the result in a specific way, which
+// didn't hold on every machine ("Could not measure the ticket height").
+// A fixed height has no such dependency. 297 mm matches the printer driver's
+// own configured paper form (see KOT_TEMPLATE_SPEC.md) and comfortably fits
+// a normal order; estimateHeightMm only raises it for an unusually large one
+// — plain arithmetic on the order data, nothing that depends on how Edge
+// renders anything.
+const FIXED_HEIGHT_MM = 297;
+
+function estimateHeightMm(order) {
+  const HEADER_MM = 30; // date/time, KOT no., Delivery, Order No, dotted rule, column header row
+  const TAIL_MM = 55; // the template's own bottom padding — always reserved
+  const NAME_COL_CHARS_PER_LINE = 16; // k-item is ~58% of 58mm content width, bold 12px
+  const NOTE_COL_CHARS_PER_LINE = 10; // k-note is ~22% of 58mm content width
+  const MM_PER_LINE = 4.5;
+
+  const itemsMm = order.items.reduce((sum, item) => {
+    const nameLines = Math.ceil((item.name || '').length / NAME_COL_CHARS_PER_LINE) || 1;
+    const noteLines = Math.ceil((item.note || '').length / NOTE_COL_CHARS_PER_LINE) || 1;
+    return sum + Math.max(nameLines, noteLines) * MM_PER_LINE;
+  }, 0);
+
+  return Math.ceil(HEADER_MM + itemsMm + TAIL_MM);
+}
+
+async function renderPdf(order, html, dir) {
   const edge = findExe(config.edgePath, EDGE_CANDIDATES);
   if (!edge) throw new Error('Microsoft Edge not found (set EDGE_PATH)');
 
-  const common = [
-    '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
-    `--user-data-dir=${path.join(dir, 'profile')}`,
-  ];
-
-  // Pass 1: lay the ticket out and read back its height.
-  const measureFile = path.join(dir, 'measure.html');
-  const probe = '<script>addEventListener("load",()=>document.body.setAttribute("data-h",document.documentElement.scrollHeight))</script>';
-  fs.writeFileSync(measureFile, html.replace('</body>', `${probe}</body>`));
-  const dom = await run(edge, [...common, '--virtual-time-budget=3000', '--dump-dom', `file:///${measureFile.replace(/\\/g, '/')}`]);
-  const m = /data-h="(\d+)"/.exec(dom);
-  if (!m) throw new Error('Could not measure the ticket height');
-  const heightMm = Math.ceil((Number(m[1]) * 25.4) / 96) + 1;
-
-  // Pass 2: print to a PDF of exactly that size.
+  const heightMm = Math.max(FIXED_HEIGHT_MM, estimateHeightMm(order));
   const ticketFile = path.join(dir, 'ticket.html');
   const pdfFile = path.join(dir, 'ticket.pdf');
   fs.writeFileSync(ticketFile, html.replace('</head>', `<style>@page { size: 80mm ${heightMm}mm; margin: 0; }</style></head>`));
-  await run(edge, [...common, '--no-pdf-header-footer', `--print-to-pdf=${pdfFile}`, `file:///${ticketFile.replace(/\\/g, '/')}`]);
+
+  await run(edge, [
+    '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
+    `--user-data-dir=${path.join(dir, 'profile')}`,
+    '--no-pdf-header-footer', `--print-to-pdf=${pdfFile}`,
+    `file:///${ticketFile.replace(/\\/g, '/')}`,
+  ]);
   if (!fs.existsSync(pdfFile)) throw new Error('Edge did not produce a PDF');
   return pdfFile;
 }
@@ -103,12 +141,18 @@ async function renderPdf(html, dir) {
  */
 async function printOrder(order) {
   if (!config.printerName) throw new Error('PRINTER_NAME is not set');
+  // Checked every time, not just at startup: SumatraPDF may not report an
+  // error for a printer name that doesn't exist, which would otherwise mark
+  // an order 'printed' when nothing came out.
+  if (!(await printerExists(config.printerName))) {
+    throw new Error(`No Windows printer named "${config.printerName}" (check PRINTER_NAME in .env)`);
+  }
   const sumatra = findExe(config.sumatraPath, SUMATRA_CANDIDATES);
   if (!sumatra) throw new Error('SumatraPDF not found (set SUMATRA_PATH)');
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'countercall-kot-'));
   try {
-    const pdf = await renderPdf(ticketHtml(order), dir);
+    const pdf = await renderPdf(order, ticketHtml(order), dir);
     // Copies are separate sequential print jobs, not a driver "copies" option.
     for (let i = 0; i < config.printCopies; i += 1) {
       await run(sumatra, ['-print-to', config.printerName, '-silent', '-print-settings', 'noscale', pdf]);

@@ -121,12 +121,38 @@ one, not the spec's two; `PRINT_COPIES` can raise it, sent as sequential
 jobs). `KOT - N` comes from a monotonically increasing SQLite counter
 (`meta` table) that is never reset and survives deleting printed orders.
 
-Printing is HTML → Edge headless → PDF sized to the ticket → SumatraPDF to
-the Windows printer (`PRINTER_NAME`); it is NOT ESC/POS and
-`node-thermal-printer` was removed. Electron (the spec's original route) was
-rejected because the service runs at boot with nobody signed in. Only the PDF
-rendering has been checked; the physical print on the real printer has not.
-The dev-mode preview renders this same HTML.
+Printing is HTML → Edge headless → PDF → SumatraPDF to the Windows printer
+(`PRINTER_NAME`); it is NOT ESC/POS and `node-thermal-printer` was removed.
+Electron (the spec's original route) was rejected when the service ran at
+boot with nobody signed in; that constraint is gone now (see "Windows
+auto-start" — it launches at sign-in), so Electron is no longer ruled out on
+that specific ground, but nothing has switched to it and there's no plan to
+unless this pipeline keeps failing.
+
+**The PDF page height is a fixed/estimated value, NOT measured from the
+rendered ticket.** An earlier version rendered once through Edge headless to
+measure the ticket's actual height (via a `<script>` that set a DOM
+attribute, read back with `--dump-dom`), then rendered a second time at that
+exact size. This failed on the real counter PC ("Could not measure the
+ticket height") because it depended on Edge's headless DOM-dump timing
+relative to script execution — clearly not consistent across Edge versions/
+machines. It's gone. `printer.js` now uses a single Edge invocation with
+`heightMm = Math.max(297, estimateHeightMm(order))` — 297 mm matches the
+printer driver's own configured paper form (KOT_TEMPLATE_SPEC.md) and covers
+any normal order; `estimateHeightMm` is plain character-count arithmetic on
+the order data (no browser involved at all) that only raises the height for
+an unusually large order. Erring tall just feeds a bit more blank paper,
+which is always safe on a continuous roll — never make this estimate
+tighter in a way that risks under-estimating and cutting off content.
+Verified here (not on the real printer) with 1-item, long-note, and 25-item
+orders — all rendered correctly in one Edge call, no measurement step.
+
+`printer.js` also verifies `PRINTER_NAME` matches an installed Windows
+printer (`Get-Printer` via PowerShell) both at startup (`isPrinterReady`,
+informational) and on every `printOrder` call (throws if not, since
+SumatraPDF may not itself error on a bad printer name — which would
+otherwise mark an order 'printed' when nothing came out). The dev-mode
+preview renders this same ticket HTML (not the PDF).
 
 ### Dev mode vs production — no UI in production, by design
 
