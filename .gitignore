@@ -1,6 +1,8 @@
-# relay-server/node_modules and counter-service/node_modules are
-# deliberately COMMITTED (not ignored) - see counter-service/.gitignore and
-# CLAUDE.md for why (the counter PC must never run "npm install").
+# relay-server/node_modules is deliberately COMMITTED (not ignored) - see
+# relay-server/.gitignore and CLAUDE.md for why (the counter PC must never
+# run "npm install"). counter-app/node_modules is the opposite - never
+# committed, see counter-app/.gitignore and CLAUDE.md's "Packaging and
+# distribution" section.
 data/
 logs/
 .env

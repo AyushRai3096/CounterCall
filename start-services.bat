@@ -1,8 +1,12 @@
 @echo off
-REM BACKUP: starts the relay server and counter service by hand, in case they
-REM didn't start automatically when you signed in. Checks each one first and
-REM only starts what isn't already running - never run two copies of
-REM counter-service at once, it causes orders to silently go missing.
+REM BACKUP: starts relay-server by hand, in case it didn't start
+REM automatically when you signed in. Checks first and only starts it if
+REM it isn't already running.
+REM
+REM counter-app (the printer service) is NOT started here - it's a
+REM separately installed app with its own auto-start (a registry Run key
+REM set by the app itself on first launch). If its tray icon is missing,
+REM launch "CounterCall Counter App" from the Start Menu instead.
 setlocal
 cd /d "%~dp0"
 
@@ -14,32 +18,18 @@ if errorlevel 1 (
 
 echo Checking what's already running...
 for /f %%R in ('powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing http://localhost:4000/health -TimeoutSec 3 | Out-Null; 'yes' } catch { 'no' }"') do set "RELAY_UP=%%R"
-for /f %%C in ('powershell -NoProfile -Command "if (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*counter-service*run.bat*' }) { 'yes' } else { 'no' }"') do set "COUNTER_UP=%%C"
 
 if "%RELAY_UP%"=="yes" (
   echo Relay server:     already running.
 ) else (
   echo Relay server:     starting...
   wscript.exe "%~dp0relay-server\run-hidden.vbs"
+  timeout /t 4 /nobreak >nul
 )
 
-if "%COUNTER_UP%"=="yes" (
-  echo Counter service:  already running.
-) else (
-  echo Counter service:  starting...
-  wscript.exe "%~dp0counter-service\run-hidden.vbs"
-)
-
-if "%RELAY_UP%%COUNTER_UP%"=="yesyes" goto :status
-echo.
-echo Waiting a few seconds...
-timeout /t 6 /nobreak >nul
-
-:status
 echo.
 powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing http://localhost:4000/health -TimeoutSec 5 | Out-Null; 'Relay server:     RUNNING' } catch { 'Relay server:     NOT RESPONDING' }"
-powershell -NoProfile -Command "if (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*counter-service*run.bat*' }) { 'Counter service:  RUNNING' } else { 'Counter service:  NOT RUNNING' }"
+powershell -NoProfile -Command "if (Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'CounterCall Counter App.exe' }) { 'Counter app:      RUNNING' } else { 'Counter app:      NOT RUNNING - launch it from the Start Menu' }"
 echo.
-echo If either says NOT RUNNING / NOT RESPONDING, check counter-service\logs\counter-service.log
-echo or run install.bat as Administrator again.
+echo If Relay server says NOT RESPONDING, run install.bat as Administrator again.
 pause

@@ -1,8 +1,0 @@
-# node_modules is deliberately committed (not ignored) so the counter PC
-# never runs "npm install" - better-sqlite3's native build step kept failing
-# there (no Python/Visual Studio, blocked native-binary download). See
-# CLAUDE.md and install.bat.
-data/
-logs/
-tmp/
-.env

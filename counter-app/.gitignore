@@ -1,0 +1,12 @@
+# Unlike relay-server/counter-service, this folder's node_modules is NOT
+# committed. Electron's own binary alone is ~180MB - over GitHub's 100MB
+# per-file limit - and Electron apps aren't distributed by git-cloning an
+# unpacked runtime tree anyway. Instead: build a packaged installer here
+# (`npm run dist`, via electron-builder) and copy just that one .exe to the
+# counter PC directly (USB, etc.), never through git. See CLAUDE.md.
+node_modules/
+dist/
+data/
+logs/
+tmp/
+.env

@@ -14,7 +14,7 @@ there (print plumbing, driver facts) apply to the bill too and aren't repeated i
 
 **Status in this codebase (CounterCall):** CounterCall has no billing feature — it's a KOT-only kitchen
 ticket relay, no prices, no GST math, no customer receipt. This file was brought in only as a styling
-reference: `counter-service/src/kotTemplate.js`'s divider (double rule) and item-table header (bottom
+reference: `counter-app/src/kotTemplate.js`'s divider (double rule) and item-table header (bottom
 border) were deliberately borrowed from this bill's look, sharing a visual system across the two
 projects' tickets. The bill itself (sections 1, 2, 4, 6 content-wise) is **not** implemented here — do
 not add GST math, restaurant identity header, or a Price/Amount column to the KOT from this file without

@@ -1,2 +1,2 @@
-# node_modules is deliberately committed (not ignored) - see
-# counter-service/.gitignore and CLAUDE.md for why.
+# node_modules is deliberately committed (not ignored) - see the root
+# .gitignore and CLAUDE.md for why.

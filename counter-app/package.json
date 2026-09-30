@@ -1,0 +1,52 @@
+{
+  "name": "counter-app",
+  "version": "1.0.0",
+  "description": "Single installed app for the counter PC: embeds the relay (phone <-> counter bridge + PWA static hosting) and the printer service in one Electron process. Persists orders to SQLite, prints kitchen tickets via Electron's native print pipeline. Runs hidden, auto-starts at sign-in and relaunches within seconds of any crash/exit (see src/watchdog.js). Distributed to the counter PC as a packaged installer (electron-builder), not via git — see CLAUDE.md.",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.countercall.counterapp",
+    "productName": "CounterCall Counter App",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../mobile-pwa/public",
+        "to": "mobile-pwa-public"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": true,
+      "include": "installer.nsh"
+    }
+  }
+}
