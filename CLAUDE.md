@@ -121,6 +121,12 @@ one, not the spec's two; `PRINT_COPIES` can raise it, sent as sequential
 jobs). `KOT - N` comes from a monotonically increasing SQLite counter
 (`meta` table) that is never reset and survives deleting printed orders.
 
+A `BILL_TEMPLATE_SPEC.md` (repo root) exists as a customer-bill template from
+a sister project, same restaurant/printer — brought in as a future styling
+reference for the KOT (a merge was tried and reverted; "we will change it
+later" per the user). CounterCall has no billing feature and doesn't
+implement that bill; don't act on that file until asked again.
+
 Printing is HTML → Edge headless → PDF → SumatraPDF to the Windows printer
 (`PRINTER_NAME`); it is NOT ESC/POS and `node-thermal-printer` was removed.
 Electron (the spec's original route) was rejected when the service ran at
@@ -153,6 +159,19 @@ informational) and on every `printOrder` call (throws if not, since
 SumatraPDF may not itself error on a bad printer name — which would
 otherwise mark an order 'printed' when nothing came out). The dev-mode
 preview renders this same ticket HTML (not the PDF).
+
+Each ticket is rendered into a per-order temp dir under
+`counter-service/tmp/` (`config.kotTmpDir`), **not** `os.tmpdir()`
+(`%TEMP%`). On the real counter PC this failed with `EPERM` doing
+`mkdtemp` under `%TEMP%` — the same kind of endpoint-security/group
+policy lockdown that also blocks Startup-folder/desktop shortcut
+creation (see "Windows auto-start" below) — which surfaced as silent
+"Edge did not produce a PDF" failures with no ticket printed. `tmp/` is
+gitignored, created on demand next to `data/` and `logs/` (both already
+proven writable there), and cleaned up per-order same as before. If you
+ever see `EPERM` again pointing at a path under `AppData\Local\Temp`,
+it's this same class of policy lockdown, not a code regression — don't
+route anything through `os.tmpdir()` on this project again.
 
 ### Dev mode vs production — no UI in production, by design
 

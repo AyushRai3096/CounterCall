@@ -1,12 +1,13 @@
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const config = require('./config');
 const logger = require('./logger');
 const { buildKotText, toPrintableHtml } = require('./kotTemplate');
+
+fs.mkdirSync(config.kotTmpDir, { recursive: true });
 
 const EDGE_CANDIDATES = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -150,7 +151,7 @@ async function printOrder(order) {
   const sumatra = findExe(config.sumatraPath, SUMATRA_CANDIDATES);
   if (!sumatra) throw new Error('SumatraPDF not found (set SUMATRA_PATH)');
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'countercall-kot-'));
+  const dir = fs.mkdtempSync(path.join(config.kotTmpDir, 'kot-'));
   try {
     const pdf = await renderPdf(order, ticketHtml(order), dir);
     // Copies are separate sequential print jobs, not a driver "copies" option.

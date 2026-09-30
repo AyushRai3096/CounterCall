@@ -42,6 +42,12 @@ module.exports = {
   printCopies: Number(process.env.PRINT_COPIES) || 1,
   dbPath: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'counter.db'),
   logPath: process.env.LOG_PATH || path.join(__dirname, '..', 'logs', 'counter-service.log'),
+  // Scratch dir for the HTML/PDF Edge renders per ticket. Deliberately NOT
+  // os.tmpdir() (%TEMP%) — on the real counter PC, endpoint-security policy
+  // (the same kind that blocks Startup-folder/desktop shortcuts) denied
+  // mkdtemp there with EPERM. This folder lives next to data/ and logs/,
+  // which are already proven writable on that machine.
+  kotTmpDir: process.env.KOT_TMP_DIR || path.join(__dirname, '..', 'tmp'),
   reconnectDelaysMs: [5000, 10000, 30000], // 5s, 10s, then 30s cap
   // Dev mode replaces the real printer with a browser preview
   // (Accept/Reject buttons) so both the success and failure paths can be
