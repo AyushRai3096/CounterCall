@@ -9,18 +9,26 @@ Independent components, no shared build tooling, no monorepo tool (no
 lerna/nx/workspaces) — each folder is its own `npm install`.
 
 - **mobile-pwa/** — order-entry PWA (phones, installed to home screen). Plain HTML/CSS/JS, no framework, no build step.
-- **relay-server/** — Socket.io bridge between the PWA and the counter app. No database, in-memory only.
-- **counter-app/** — Electron desktop app, runs on the counter PC. Persists orders to SQLite (better-sqlite3) before acking anything, then prints a KOT ticket on a Windows thermal printer via Electron's own native print pipeline. Packaged into an installer for distribution (not run via `npm start`/git-cloned `node_modules` like the other two — see "Packaging and distribution" below). Replaced `counter-service` (below) after repeated failures on the real counter PC.
+- **counter-app/** — Electron desktop app, runs on the counter PC. This is now the **entire** counter-side system: it embeds the relay (Socket.io bridge + PWA static hosting, `src/relay/`) in the same process as the printer service, persists orders to SQLite (better-sqlite3) before acking anything, then prints a KOT ticket on a Windows thermal printer via Electron's own native print pipeline. Packaged into an installer for distribution (not run via `npm start`/git-cloned `node_modules` — see "Packaging and distribution" below).
 
-`counter-service/` **used to be** this project's counter-side component
-(a plain Node process: HTML → Edge headless → PDF → SumatraPDF). It's
-gone from the working tree now (still recoverable from git history) —
-`counter-app` replaced it entirely. Its lessons (durability model, retry
-rules, the KOT template itself) carried over unchanged into `counter-app`;
-where this file still says "the source app" or references an older
-Electron design, that's `counter-service`'s own predecessor per
-`KOT_TEMPLATE_SPEC.md`, not `counter-service` itself — don't confuse the
-three generations.
+Two earlier, separate components are **gone from the working tree**
+(still recoverable from git history) — their logic and lessons carried
+over into `counter-app` unchanged; where this file says "the source
+app" or references an older Electron design, that's a predecessor's own
+predecessor per `KOT_TEMPLATE_SPEC.md`, not either of these — don't
+confuse the generations:
+- `counter-service/` — the original counter-side process (Node: HTML →
+  Edge headless → PDF → SumatraPDF). Replaced by `counter-app` after
+  repeated, hard-to-diagnose failures on the real counter PC.
+- `relay-server/` — a standalone Node process (Socket.io bridge + PWA
+  static hosting). Its code was **ported into** `counter-app/src/relay/`
+  (see "Merging relay-server into counter-app" below) so there's exactly
+  one thing to install on the counter PC and zero separate services to
+  remember to start. `relay-server/` itself still exists in the repo as
+  reference/fallback but is **not part of the current deployment** —
+  don't add features there expecting them to reach production; add them
+  to `counter-app/src/relay/` (and port back if `relay-server/` ever
+  needs to match).
 
 ## Commands
 
@@ -29,11 +37,13 @@ relay-server or mobile-pwa. counter-app has one build step: packaging
 into an installer (see below).
 
 ```
-cd relay-server && npm install && npm start          # :4000 by default (PORT env var to change)
-cd counter-app && npm install && npm start            # unpackaged dev run — connects to relay, drives the real printer
+cd counter-app && npm install && npm start            # unpackaged dev run — embedded relay on :4000 (PORT env var to change) + real printer
 cd counter-app && npm run dist                        # packages an installer (dist/*.exe) — see "Packaging and distribution"
-# mobile-pwa has no server or npm scripts of its own: relay-server serves mobile-pwa/public
-# (see staticServer.js); phones use the Tailscale Funnel https://…ts.net address
+# mobile-pwa has no server or npm scripts of its own: counter-app's embedded relay serves
+# mobile-pwa/public (see src/relay/staticServer.js); phones use the Tailscale Funnel https://…ts.net address
+# relay-server/ still runs standalone the old way (npm install && npm start) if you need it for
+# reference/comparison, but this is not how production works anymore — see "Merging relay-server
+# into counter-app" below.
 ```
 
 `counter-app` needs a `.env` for anything other than defaults —
@@ -81,31 +91,38 @@ normally set via the tray icon, not by hand.
 
 ### Deployment topology (current, deliberate decision)
 
-The relay server and the counter app run on **the same Windows PC**
-(the counter PC) — not on separate machines, not on a VPS, and the PWA is
-NOT hosted on a separate static host (Cloudflare/GitHub Pages were
-considered and rejected as an unnecessary extra moving part). Staff
-phones are **Android only**. The counter PC is exposed over HTTPS with a
-free, permanent **Tailscale Funnel** address (`tailscale funnel --bg
-4000` → `https://<pc>.<tailnet>.ts.net`); the restaurant's internet is
-reliable and is now a hard dependency. Setup steps are in the root
-README. Don't go back to LAN-IP-based setups (the user can't look up or
-manage IPs), and don't point an HTTPS page at a plain `ws://` LAN relay
-— browsers block that as mixed content.
+**One installed app, one process, on the counter PC.** `counter-app`
+embeds the relay in the same Electron process as the printer service
+(see "Merging relay-server into counter-app" below) — not on separate
+machines, not on a VPS, and the PWA is NOT hosted on a separate static
+host (Cloudflare/GitHub Pages were considered and rejected as an
+unnecessary extra moving part). Staff phones are **Android only**. The
+counter PC is exposed over HTTPS with a free, permanent **Tailscale
+Funnel** address (`tailscale funnel --bg 4000` → `https://<pc>.<tailnet>.ts.net`,
+which `counter-app` now enables automatically on startup — see below);
+the restaurant's internet is reliable and is now a hard dependency.
+Setup steps are in the root README. Don't go back to LAN-IP-based
+setups (the user can't look up or manage IPs), and don't point an HTTPS
+page at a plain `ws://` LAN relay — browsers block that as mixed content.
 
-- **The relay also serves the PWA's static files** (`relay-server/src/staticServer.js`,
-  from `mobile-pwa/public`, override with `PWA_DIR`) on the same port, so the
-  one Funnel address is both where phones install the app and the relay they
-  send to. `mobile-pwa/public/config.js` → `relayUrl` is
-  `window.location.origin` (the relay is wherever the page was loaded from);
-  only hardcode a URL if the PWA is ever hosted somewhere other than the relay.
-  HTTPS via Funnel is what makes it a real PWA install (service worker,
-  offline shell) on Android Chrome.
+- **The embedded relay also serves the PWA's static files**
+  (`counter-app/src/relay/staticServer.js`, from `mobile-pwa/public`,
+  bundled into the installer via `package.json`'s `build.extraResources`
+  since a packaged app has no sibling folders on the target machine to
+  read it from — see "Merging relay-server into counter-app") on the
+  same port, so the one Funnel address is both where phones install the
+  app and the relay they send to. `mobile-pwa/public/config.js` →
+  `relayUrl` is `window.location.origin` (the relay is wherever the page
+  was loaded from); only hardcode a URL if the PWA is ever hosted
+  somewhere other than the relay. HTTPS via Funnel is what makes it a
+  real PWA install (service worker, offline shell) on Android Chrome.
 - The relay is publicly reachable and has **no authentication** — anyone
   with the URL can submit orders that print. Known and accepted for now;
   a shared access code is the obvious next step.
-- counter-app's `.env` → `RELAY_URL=http://localhost:4000` (same
-  machine as the relay; this is also the default if unset).
+- The printer-service half of `counter-app` still talks to its own
+  embedded relay half over `RELAY_URL=http://localhost:4000` (loopback,
+  same process, same default if unset) — an intentional leftover of the
+  two-piece design (see below), not a mistake.
 - Single-counter design throughout: there is no `counterDeviceId` or
   multi-counter routing anywhere in the protocol. Adding one back would
   be a real feature, not a bug fix.
@@ -113,10 +130,60 @@ manage IPs), and don't point an HTTPS page at a plain `ws://` LAN relay
 Moving the relay to a separate always-on device or a VPS is not the
 current setup; don't build toward it speculatively.
 
+### Merging relay-server into counter-app
+
+**Why**: the user's explicit requirement was one installer, zero manual
+setup steps on the counter PC ("i will not run anything manual"). Before
+this, `relay-server` was a separate Node process needing its own
+`install.bat` run (Node.js install, a Startup-folder shortcut, etc.) —
+a real, working, but separate step the user reasonably didn't expect to
+need after being handed a single `.exe`. `relay-server` turned out to be
+simple enough (plain Node + `socket.io`, no native dependencies) to
+embed directly rather than keep as a separate process.
+
+**How**: `relay-server/src/index.js`, `queueManager.js`, and
+`staticServer.js` were ported near-verbatim into
+`counter-app/src/relay/server.js`/`queueManager.js`/`staticServer.js` —
+protocol and behavior unchanged (see `relay-server/README.md` for the
+full Socket.io protocol, still accurate). The only real changes:
+- `server.js` exports a `start(port)` function instead of running at
+  require-time, called from `counter-app/src/main.js`'s `main()`.
+- Logging goes through `counter-app`'s shared `logger.js` (prefixed
+  `[relay]`) instead of `relay-server`'s own plain `console.log`, so
+  relay and printer activity land in the same `counter-app.log`.
+- `staticServer.js`'s PWA root can no longer be `path.join(__dirname, '..', '..', 'mobile-pwa', 'public')`
+  (a packaged app has no sibling `mobile-pwa` folder on the target
+  machine) — it's `process.resourcesPath/mobile-pwa-public` when
+  packaged (`app.isPackaged`), copied there at build time by
+  `package.json`'s `build.extraResources: [{ "from": "../mobile-pwa/public", "to": "mobile-pwa-public" }]`,
+  or the original sibling-folder path when run unpackaged for local dev.
+
+**What this does NOT change**: the counter-side printer logic still
+connects to the relay as an ordinary `socket.io-client`, over
+`RELAY_URL` (loopback), exactly as when they were separate processes —
+`counter-app/src/socketClient.js` is untouched. This was deliberate:
+merging the *deployment* (one process, one installer) without also
+collapsing the *protocol boundary* (still two logical sides talking
+Socket.io) kept the change low-risk — the already-tested reconnect
+logic, retry rules, and event handling needed zero changes.
+
+**Tailscale Funnel auto-enable** (`counter-app/src/tailscale.js`,
+`ensureFunnel()`, called from `main()`): best-effort, not a substitute
+for Tailscale's own one-time setup. It looks for an already-installed
+`tailscale.exe` at the usual path and runs `tailscale funnel --bg
+<port>` if found; if Tailscale isn't installed, or is installed but not
+yet signed in, this fails harmlessly (logged as a warning, not thrown)
+and does nothing else — **installing Tailscale and signing in remains a
+real, interactive, one-time human step no installer can safely
+automate** (it's a VPN/auth flow). Don't try to script around that with
+a stored auth key or similar without the user explicitly asking for it
+— that's a real security decision, not a convenience shortcut to make
+unilaterally.
+
 ### Order lifecycle and where durability actually lives
 
 The relay has **no database** — it holds orders in an in-memory `Map`
-(`relay-server/src/queueManager.js`) only until the counter app acks
+(`counter-app/src/relay/queueManager.js`) only until the counter app acks
 receipt. counter-app's SQLite database (in its userData folder, see
 below) is the sole durable store, written **before** any ack is sent,
 before any print is attempted. If the relay process restarts while
@@ -139,8 +206,11 @@ easy to conflate when touching `attemptPrint`/`resumeOnStartup` in
 
 Full Socket.io protocol (`order:submit`, `order:delivered`,
 `order:printed`, `order:error`, `counter:register`, `sync:request`) is
-documented in `relay-server/README.md` — spans both components, so
-read that before changing any event name or payload shape.
+documented in `relay-server/README.md` — still accurate even though the
+relay side now lives at `counter-app/src/relay/server.js` (ported
+near-verbatim, see "Merging relay-server into counter-app" above); read
+that doc before changing any event name or payload shape, and update it
+alongside `counter-app/src/relay/` if the protocol ever changes.
 
 ### Where counter-app's writable files live (and a real asar bug to not repeat)
 
@@ -279,10 +349,14 @@ reason.
 Only **one** `counter-app` instance may run at a time — enforced by
 Electron's own `app.requestSingleInstanceLock()` in `src/main.js` (a
 second instance calls `app.quit()` immediately, before doing anything
-else). This replaces `counter-service`'s `devPreviewServer` `EADDRINUSE`
-check, which doesn't exist here — keep the lock check if touching
-startup code; a second instance would still "win" order routing from the
-relay (which only tracks one counter socket) while doing nothing useful.
+else, checked before `relay.start()` ever runs). This matters even more
+now than it did for `counter-service`: since the relay is embedded (see
+"Merging relay-server into counter-app"), a second instance wouldn't
+just "win" order routing from a separate relay — it would try to bind
+its own `http.createServer()` to the same port and fail outright
+(`EADDRINUSE`), since `relay.start()` has no `EADDRINUSE`-handling of
+its own (unlike `counter-service`'s old `devPreviewServer`, which did).
+Keep the lock check first in startup code if touching it.
 
 ### Reconnection
 
@@ -346,24 +420,24 @@ forcing websocket-only.
   `CACHE_NAME` must be bumped on every app-shell file change or edits
   won't reach devices that already have the service worker installed.
 
-### Windows auto-start — two different mechanisms now
+### Windows auto-start
 
-**relay-server** (unchanged): `install.bat` (repo root, run once as
-Administrator) creates a shortcut in the current user's Windows
-**Startup folder** (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`)
-pointing at `run-all-hidden.vbs` (repo root), which launches
-`relay-server/run-hidden.vbs`, which runs that folder's `run.bat` (the
-crash-restart loop) with **no visible console window**. No Task
-Scheduler, no SYSTEM account, no admin rights needed for this step
-(only `install.bat`'s winget installs need elevation). History: this was
-originally Task Scheduler tasks running as SYSTEM at boot, abandoned
-after repeated, hard-to-diagnose failures on the real counter PC
-(PowerShell execution-policy blocked `npm install`, then a native build
-failed for lack of network access to fetch a prebuilt binary). The user
-does sign in to the counter PC day to day (running a till), so "must
-survive nobody signing in" was dropped as a requirement.
+**`relay-server`'s old mechanism is history, kept only for context** (it
+doesn't run in production anymore — see "Merging relay-server into
+counter-app"): `install.bat` created a Startup-folder shortcut pointing
+at `run-all-hidden.vbs` → `relay-server/run-hidden.vbs` → that folder's
+`run.bat` (a crash-restart loop), no visible console window, no Task
+Scheduler, no SYSTEM account. That in turn replaced an even earlier
+Task Scheduler/SYSTEM design, abandoned after repeated, hard-to-diagnose
+failures on the real counter PC (PowerShell execution-policy blocked
+`npm install`, then a native build failed for lack of network access to
+fetch a prebuilt binary). The user does sign in to the counter PC day to
+day (running a till), so "must survive nobody signing in" was dropped as
+a requirement back then — still true now, `counter-app` also assumes
+someone signs in daily.
 
-**counter-app**: the user's requirement here is stronger than "starts at
+**`counter-app`** (the only thing that actually auto-starts now): the
+user's requirement here is stronger than "starts at
 sign-in" — "never stop, until I uninstall or delete it," i.e. survive a
 crash mid-session too, not just a reboot. `app.setLoginItemSettings`
 alone (an earlier version of this app used only that) doesn't cover
@@ -384,11 +458,12 @@ it was just started from (the new copy hits
 `requestSingleInstanceLock()` and quits immediately), so a blocking loop
 would just keep relaunching-and-quitting a copy every 5s for as long as
 the real instance stays up. `ensureWatchdog()` also checks (via
-`Get-CimInstance Win32_Process`, matching on `watchdog.bat` in the
-command line) whether a loop is already running before starting another
-— without that check, every relaunch (including ones the watchdog
-itself triggered) would pile up a redundant polling loop running
-forever alongside the earlier ones.
+`Get-CimInstance Win32_Process`, matching `Name -eq 'cmd.exe'` with
+`watchdog.bat` in the command line — see the self-matching bug below for
+why it's `Name` + `CommandLine`, not `CommandLine` alone) whether a loop
+is already running before starting another — without that check, every
+relaunch (including ones the watchdog itself triggered) would pile up a
+redundant polling loop running forever alongside the earlier ones.
 
 This supersedes `setLoginItemSettings` — don't run both, or two copies
 launch at sign-in (one via the registry Run key, one via this Startup
@@ -403,19 +478,42 @@ know about it; `nsis.deleteAppDataOnUninstall: true` removes the rest,
 including the watchdog scripts themselves, from userData) or delete the
 install directory directly.
 
-`start-services.bat` (repo root) is the **manual backup for relay-server
-only** — checks `/health` before starting it, since nothing here has
-Task Scheduler's "don't start a second instance" semantics. It reports
-counter-app's status (by process name) but does not try to start it —
-launch "CounterCall Counter App" from the Start Menu if its tray icon is
-missing. `install.bat` also makes a desktop icon "Start CounterCall"
-pointing at `start-services.bat` (try/catch'd — some PCs block creating
-new desktop icons; the script works fine run directly too).
+**A real bug in the "is a loop already running" check, already fixed —
+don't reintroduce it.** `ensureWatchdog()`'s check originally filtered
+`Get-CimInstance Win32_Process` on `CommandLine -like '*watchdog.bat*'`
+alone. That check runs via `powershell.exe -Command "..."`, and the
+`-Command` string **itself contains the literal text `watchdog.bat`**
+(it's right there in the filter pattern) — so the check's own process
+always matched its own search, always reported "yes, already running,"
+and silently skipped starting the loop on every single launch. No error
+was ever thrown (matching itself isn't a failure), so this was
+completely silent: the app worked fine in every other respect, the
+watchdog files existed on disk, the Startup shortcut was created
+correctly — the only symptom was that clicking Restart (or an actual
+crash) never brought the app back, discovered only by noticing the log
+never contained "Watchdog started" or any related line at all, for any
+session, ever. Fixed by also filtering on `Name -eq 'cmd.exe'` (the
+actual loop always runs as `cmd.exe`, per `watchdog.vbs`'s `cmd /c
+"..."`; the check's own process is `powershell.exe`, so this excludes
+the false self-match). The general lesson: a shell command that greps
+for a string which also appears in its own invocation will match
+itself — watch for this pattern anywhere a process-existence check is
+built by embedding the same string being searched for into the search
+command's own command line.
 
-**`node_modules` for `relay-server` is deliberately committed to git**
-(unchanged reasoning — see `.gitignore` comments) — this is what
-actually removes the `npm install` failure on the counter PC: it never
-runs `npm install`, it just runs the already-resolved code.
+`install.bat`/`start-services.bat`/`run-all-hidden.vbs`/`relay-server/run.bat`
+are **not used in the current deployment** (see "Merging relay-server
+into counter-app" above) — `counter-app` is fully self-starting and
+self-healing on its own via the watchdog described above, with no
+separate relay process to start or monitor. These files are kept as a
+fallback/reference only, in case the embedded-relay decision is ever
+reverted; don't extend them expecting changes to reach production, and
+don't assume they're what's actually running on a real counter PC
+without checking `counter-app`'s own log first.
+
+**`node_modules` for `relay-server` is still committed to git** for the
+same historical reasoning (see `.gitignore` comments) in case it's ever
+run standalone again, even though nothing in production does that now.
 **`counter-app/node_modules` is deliberately NOT committed** — see
 "Packaging and distribution" below, this component is distributed a
 different way entirely. Don't add `relay-server/node_modules` back to
@@ -440,7 +538,15 @@ git) and run it. `package.json`'s `build.files`/`asarUnpack` config
 unpacks `better-sqlite3`'s native binary from the asar archive (native
 addons can't load from inside one); `build.npmRebuild: false` stops
 `electron-builder` from trying to recompile it (see the `better-sqlite3`
-note under Commands above).
+note under Commands above). `build.extraResources` copies
+`../mobile-pwa/public` into the packaged app's `resources/mobile-pwa-public/`
+— see "Merging relay-server into counter-app" above for why the PWA
+static files need bundling this way instead of the sibling-folder path
+`relay-server` originally used. `dependencies` includes both `socket.io`
+(the server package, for the embedded relay) and `socket.io-client` (for
+the printer side's own connection to it) — don't remove either thinking
+one is redundant; they're genuinely two different packages for the two
+sides of the same loopback connection.
 
 **Building the installer requires Windows Developer Mode enabled** on
 the machine doing the build (Settings → Privacy & security → For
@@ -455,6 +561,19 @@ is the actual fix; don't try to route around the underlying Windows
 symlink-privilege restriction any other way (e.g. registry edits made
 on the user's behalf) — this is the user's call to make on their own
 machine.
+
+**Running the installer can also hit Windows 11's Smart App Control**
+(SAC), which blocks unsigned executables by design — separate from, and
+in addition to, the Developer Mode build-time issue above. Real code
+signing (a paid certificate from a CA, identity-verified) is the proper
+fix but isn't something achievable mid-session. **SAC can only be turned
+OFF, not toggled** — Microsoft made it one-way; re-enabling it requires
+a full Windows reset/clean install. This is a materially bigger
+tradeoff than Developer Mode and must be the user's own explicit,
+informed choice (Settings → Privacy & security → Windows Security →
+App & browser control → Smart App Control → Off) — don't suggest it
+casually, and never do anything to weaken it on the user's behalf
+without them asking.
 
 ## Keeping this file current
 
