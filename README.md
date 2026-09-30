@@ -95,14 +95,17 @@ SYSTEM account (that approach hit repeated, hard-to-diagnose failures on
 the real counter PC) — it just needs someone to sign in, same as opening
 the till for the day.
 
-**Backup:** the **Start CounterCall** desktop icon
-(`start-services.bat`) starts whichever of the two isn't already running
-and reports the status of both. Use it if they didn't start automatically.
-It checks before starting each one — **never run a second copy of
-counter-service**, it causes orders to silently go missing (see
-`CLAUDE.md`). The `.ts.net` address is printed at the end of the install
-window and any time by `tailscale funnel status`; it doesn't change on
-reboot (only if the PC or tailnet is renamed).
+**Backup:** `start-services.bat`, in the project's root folder, starts
+whichever of the two isn't already running and reports the status of both.
+Use it if they didn't start automatically. `install.bat` also puts a
+**Start CounterCall** icon on the desktop that runs this same file — but if
+some PCs block creating new desktop icons, that's fine, just run
+`start-services.bat` directly from the project folder instead; nothing
+about what it does depends on the icon existing. It checks before starting
+each one — **never run a second copy of counter-service**, it causes
+orders to silently go missing (see `CLAUDE.md`). The `.ts.net` address is
+printed at the end of the install window and any time by `tailscale funnel
+status`; it doesn't change on reboot (only if the PC or tailnet is renamed).
 
 For manual/dev runs instead of the Startup-folder launch, each folder has
 its own `npm start` — see that component's README.

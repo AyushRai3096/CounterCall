@@ -257,8 +257,12 @@ and `counter-service/run-hidden.vbs`, each of which runs that folder's
 `run.bat` (the crash-restart loop, unchanged) with **no visible console
 window**. No Task Scheduler, no SYSTEM account, no admin rights needed for
 this step (only `install.bat`'s winget installs need elevation).
-`start-services.bat` (desktop icon "Start CounterCall") is the manual
-backup — it explicitly checks whether the relay (`/health`) and counter
+`start-services.bat` (repo root; `install.bat` also makes a desktop icon
+"Start CounterCall" pointing at it, but the script works fine run directly
+too — some PCs' policy blocks creating new desktop icons, `install.bat`
+now catches that and just tells the user to run it directly, see the
+try/catch around the shortcut-creation steps) is the manual backup — it
+explicitly checks whether the relay (`/health`) and counter
 service (by command line, via `Get-CimInstance Win32_Process`) are already
 running before starting either, since nothing here has Task Scheduler's
 (unverified, and no longer relevant) "don't start a second instance"
